@@ -1,0 +1,491 @@
+<template>
+  <div class="output-container">
+    <!-- 顶部标签 -->
+    <div class="tabs">
+      <div
+        v-for="tab in results"
+        :key="tab.id"
+        :class="['tab-button', { active: tab.id === activeTab }]"
+        :data-status="tab.success"
+        @click="activeTab = tab.id"
+      >
+        <span>{{ tab.title }}</span>
+        <span class="close-btn" @click.stop="emitClose(tab.id)">✕</span>
+      </div>
+    </div>
+
+    <!-- 输出内容区域 -->
+    <div class="output-content" v-if="activeResult">
+      <!-- 普通查询/DDL 表格内容 -->
+      <template v-if="!activeResult.component">
+        <div class="result-table-wrapper">
+        <table class="result-table" v-if="activeResult.data && activeResult.data.length">
+          <thead>
+            <tr>
+              <th v-for="(v, k) in activeResult.data[0]" :key="k">{{ k }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in activeResult.data" :key="i">
+              <td v-for="(v, k) in row" :key="k" style="white-space: pre-wrap; word-break: break-word; font-family: monospace;">{{ v }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="no-result">暂无结果</div>
+        <div class="result-info">
+          <span class="status" :class="{ success: activeResult.success, fail: !activeResult.success }">
+							<img
+							  :src="activeResult.success ? successIcon : failIcon"
+							  alt="执行状态"
+							  class="icon"
+               width="20" 
+               height="20" 
+							/>             
+            {{ activeResult.success ? '执行成功'  : '执行失败' }}
+          </span>
+          <span class="time"><img src="../assets/icons/weui--time-outlined.svg" alt="time" width="20" height="20" class="icon"/>耗时：{{ activeResult.time || '—' }}</span>
+          <span class="message">{{ activeResult.message }}</span>
+        </div>
+       </div>
+      </template>
+
+      <!-- Faker 造数表单 -->
+      <template v-else-if="activeResult.component === 'FakerResult'">
+        <div class="editor-toolbar">
+           <button class="faker-btn" @click="submitFaker">
+           <img src="../assets/icons/covid--transmission-virus-human-transmit-2.svg" alt="DB" width="20" height="20" class="icon"/>
+						Faker Data
+					  </button>
+          <div class="table-info">
+            <span><img src="../assets/icons/carbon--cics-db2-connection.svg" alt="DB" width="20" height="20" class="icon"/> {{ env }}<img src="../assets/icons/devicon--azuresqldatabase.svg" alt="DB" width="20" height="20" class="icon"/>{{ db }} <img src="../assets/icons/carbon--data-table-reference.svg" alt="DB" width="20" height="20" class="icon"/> {{ table }}</span> 
+          </div>
+        </div>
+
+				<div class="faker-container">
+				  <table class="faker-table">
+					<thead>
+					  <tr>
+						<th>字段名</th>
+						<th>类型</th>
+						<th>注释</th>
+						<th>主键</th>
+						<th>样本数据</th>
+					  </tr>
+					</thead>
+					<tbody>
+					  <tr v-for="(col, index) in tableData" :key="index">
+						<td>{{ col.name }}</td>
+						<td>{{ col.type }}</td>
+						<td>{{ col.comment }}</td>
+						<td>
+						  <input type="checkbox" v-model="col.isPrimary" />
+						</td>
+						<td>
+						  <input
+							type="text"
+							v-model="col.sample"
+							class="sample-input"
+							placeholder="请输入样本值"
+						  />
+						</td>
+					  </tr>
+					</tbody>
+				  </table>
+				</div>
+
+      </template>
+    </div>
+
+    <!-- 没有结果 -->
+    <div v-else class="no-result">暂无结果</div>
+  </div>
+</template>
+
+<script setup>
+
+import successIcon from '../assets/icons/mdi--check-circle-outline.svg'
+import failIcon from '../assets/icons/mdi--close-circle-outline.svg'
+
+import { ref, computed, watch, reactive } from 'vue'
+import axios from 'axios'
+import { Icon } from '@iconify/vue'
+
+const props = defineProps({
+  results: Array,
+})
+
+const emit = defineEmits(['close-result'])
+
+const activeTab = ref(null)
+const tableDataMap = reactive({}) // 保存每个 faker tab 的表单数据
+
+// 自动激活最后一个结果，并为 FakerResult 初始化表单数据（安全判定）
+watch(
+  () => props.results,
+  (newVal) => {
+    if (newVal.length > 0) {
+      const last = newVal[newVal.length - 1]
+      activeTab.value = last.id
+
+      if (last.component === 'FakerResult' && !tableDataMap[last.id]) {
+        // last.data 应该是你后端 /api/faker 返回的对象，包含 columns 和 rows
+        // rows: [ ['id','Int32','主键ID'], ... ]
+        const rows = Array.isArray(last.data?.rows) ? last.data.rows : []
+        // 根据 rows 构建表单行：{ name, type, comment, isPrimary, sample }
+        tableDataMap[last.id] = rows.map(r => ({
+          name: r[0] ?? '',
+          type: r[1] ?? '',
+          comment: r[2] ?? '',
+          isPrimary: false,
+          sample: ''
+        }))
+      }
+    } else {
+      activeTab.value = null
+    }
+  },
+  { deep: true, immediate: true }
+)
+
+const activeResult = computed(() =>
+  props.results.find(r => r.id === activeTab.value)
+)
+
+// 计算当前 faker 的 env/db/table（从 activeResult.data）
+const env = computed(() => activeResult.value?.data?.env || '')
+const db = computed(() => activeResult.value?.data?.db || '')
+const table = computed(() => activeResult.value?.data?.table || '')
+
+// 取当前 tab 的表单数据（如果不是 faker 返回空数组）
+const tableData = computed(() => {
+  if (!activeResult.value) return []
+  if (activeResult.value.component === 'FakerResult') {
+    return tableDataMap[activeResult.value.id] || []
+  }
+  return []
+})
+
+function emitClose(id) {
+  emit('close-result', id)
+}
+
+// 提交造数
+async function submitFaker() {
+  const tab = activeResult.value
+  if (!tab || tab.component !== 'FakerResult') {
+    alert('当前不是造数标签页')
+    return
+  }
+
+  const payload = {
+    env: env.value,
+    db: db.value,
+    table: table.value,
+    columns: tableDataMap[tab.id].map(c => ({
+      name: c.name,
+      type: c.type,
+      comment: c.comment,
+      isPrimary: !!c.isPrimary,
+      sample: c.sample
+    }))
+  }
+
+  try {
+    const res = await axios.post('/api/run-faker', payload)
+
+		props.results.push({
+			  id: Date.now(),
+			  title: `造数 ${props.results.length} 结果`,
+			  data: [],           // 后端返回结果
+			  success: true,
+			  time: res.data.time,
+			  message: res.data.message
+			})
+
+			// 自动切换到新标签
+		 activeTab.value = props.results[props.results.length - 1].id
+
+  } catch (err) {
+    console.error('造数提交失败:', err)
+    props.results.push({
+      id: Date.now(),
+			title: `造数 ${props.results.length} 结果`,
+			data: [],           // 后端返回结果
+			success: false,
+			time: res.data.time,
+			message: res.data.message
+    })
+
+    activeTab.value = props.results[props.results.length - 1].id
+  }
+
+}
+
+</script>
+
+<style scoped>
+.output-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #f9f9f9;
+  color: #333;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.tabs {
+  display: flex;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+}
+
+.tab-button {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  margin-right: 2px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  position: relative;
+}	
+
+.tab-button.active {
+  color: #0078d4;
+  border-bottom: 2px solid #0078d4;
+  background: #f9f9f9;
+  font-weight: 600;
+}
+
+/* 根据状态控制底线颜色 */
+.tab-button.active[data-status='true'] {
+  border-bottom-color: #409eff; /* 蓝色 */
+}
+
+.tab-button.active[data-status='false'] {
+  border-bottom-color: #ff4d4f; /* 红色 */
+}
+
+
+.close-btn {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+}
+
+.close-btn:hover {
+  color: #ff4d4f;
+}
+
+.output-content {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  background: white;
+}
+
+
+
+.table-info{
+  min-width: 220px;
+  padding: 4px 8px;
+  font-size: 14px;
+  border-radius: 4px;
+  border: none;
+  outline: none;
+  display: inline-block;
+  margin-right: 8px;
+  background: #f8f9fa;;
+  text-align: left;
+}
+
+.result-table-wrapper {
+  max-height: 400px; /* 你可以调整高度 */
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+/* ✅ 固定表头 */
+.result-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f9fafb; /* 表头背景 */
+  z-index: 2;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid #ccc;
+}
+
+/* === 普通查询结果表格 === */
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+}
+
+.result-table th,
+.result-table td {
+  border: 1px solid #e0e0e0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.result-table th {
+  background: #f5f6f8;
+  color: #333;
+  font-weight: 600;
+}
+
+.result-table tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.result-table tr:hover {
+  background: #e9f3ff;
+  transition: background-color 0.15s ease-in-out;
+}
+
+/* === Faker造数表格 === */
+.faker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.faker-table th,
+.faker-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
+}
+
+.faker-table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #333;
+}
+
+.faker-table tbody tr:hover {
+  background-color: #eef6ff;
+  transition: background-color 0.2s;
+}
+
+/* ✅ 样本输入框样式 */
+.sample-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  outline: none;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.sample-input:focus {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
+}
+
+/* ✅ 响应式支持 */
+@media (max-width: 768px) {
+  .result-table th,
+  .result-table td,
+  .faker-table th,
+  .faker-table td {
+    padding: 6px 8px;
+    font-size: 13px;
+  }
+}
+
+
+.no-result {
+  color: #777;
+  text-align: center;
+  padding: 16px;
+}
+
+.result-info {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f6f8fa;
+  border-top: 1px solid #ddd;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  color: #555;
+}
+
+.result-info .status.success {
+  color: #2e7d32;
+  font-weight: bold;
+}
+
+.result-info .status.fail {
+  color: #d32f2f;
+  font-weight: bold;
+}
+
+.result-info .time {
+  color: #666;
+}
+
+.result-info .message {
+  color: #444;
+  flex: 1;
+  white-space: pre-wrap; /* 保留换行和空格 */ 
+}
+
+.faker-container {
+  padding: 10px;
+  background: #fff;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.faker-btn {
+  background-color: #10b981; /* 绿色 */
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px; /* 图标和文字间距 */
+  transition: background 0.2s;
+}
+.faker-btn:hover {
+  background-color: #059669;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  background: #f8f9fa;
+  padding: 6px 10px;
+  border-bottom: 1px solid #ddd;
+  gap: 16px;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+
+</style>

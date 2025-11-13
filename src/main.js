@@ -1,0 +1,11 @@
+import './assets/main.css'
+import { createApp } from 'vue'
+import App from './App.vue'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+import 'splitpanes/dist/splitpanes.css'
+
+createApp(App).use(ElementPlus).mount('#app')
+
+
+

@@ -1,0 +1,425 @@
+import subprocess
+import threading
+import queue
+import time
+import re
+
+class SparkBeelineSession:
+    def __init__(self, beeline_path: str, jdbc_url: str):
+        self.beeline_path = beeline_path
+        self.jdbc_url = jdbc_url
+        self.process = None
+        self.output_queue = queue.Queue()
+        self._start_beeline()
+
+    def _start_beeline(self):
+        """启动 spark-beeline 子进程，并持续监听输出"""
+        self.process = subprocess.Popen(
+            [self.beeline_path, f"-u", self.jdbc_url],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        # 独立线程读取 beeline 输出
+        def reader_thread():
+            for line in self.process.stdout:
+                self.output_queue.put(line)
+        threading.Thread(target=reader_thread, daemon=True).start()
+
+    def _read_output(self, end_marker="beeline>", timeout=10):
+        """读取 beeline 输出直到下一个提示符"""
+        lines = []
+        start_time = time.time()
+        while True:
+            try:
+                line = self.output_queue.get(timeout=0.1)
+                lines.append(line)
+                if end_marker in line:
+                    break
+            except queue.Empty:
+                if time.time() - start_time > timeout:
+                    break
+        return lines
+
+    def execute(self, sql: str, env: str):
+        """执行 SQL，并返回 mock 风格的结果"""
+        # 向 beeline 输入 SQL
+        self.process.stdin.write(sql + ";\n")
+        self.process.stdin.flush()
+
+        start = time.time()
+        raw_output = self._read_output()
+        elapsed = f"{(time.time() - start):.3f}s"
+
+        # ---- 解析输出 ----
+        output_text = "".join(raw_output)
+        success = "Error" not in output_text and "Exception" not in output_text
+
+        # 提取表格数据
+        columns, rows = self._parse_table_data(output_text)
+
+        return {
+            "env": env,
+            "sql": sql,
+            "columns": columns,
+            "rows": rows,
+            "message": "SQL 执行成功" if success else "SQL 执行失败",
+            "success": success,
+            "time": elapsed
+        }
+
+    def _parse_table_data(self, text: str):
+        """
+        从 beeline 输出中提取列名和行数据。
+        兼容查询结果和更新结果（如 INSERT/UPDATE/DELETE）。
+        """
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        table_start = None
+        table_end = None
+
+        # 找到表格边界
+        for i, l in enumerate(lines):
+            if re.match(r"^\+-+\+$", l):  # +---+---+
+                if table_start is None:
+                    table_start = i
+                else:
+                    table_end = i
+                    break
+
+        if table_start is None or table_end is None:
+            # 非查询类语句（如 INSERT/UPDATE）
+            m = re.search(r"rows? affected", text)
+            msg = m.group(0) if m else "OK"
+            return [], [[msg]]
+
+        # 提取列名和数据行
+        header_line = lines[table_start + 1]
+        headers = [h.strip() for h in header_line.split('|')[1:-1]]
+
+        data_lines = lines[table_start + 3: table_end: 2]
+        rows = [[c.strip() for c in row.split('|')[1:-1]] for row in data_lines]
+
+        return headers, rows
+
+    def close(self):
+        """关闭 beeline 进程"""
+        if self.process:
+            self.process.stdin.write("!quit\n")
+            self.process.stdin.flush()
+            self.process.terminate()
+            self.process.wait()
+
+
+# ---------------- 示例 ----------------
+if __name__ == "__main__":
+    session = SparkBeelineSession(
+        beeline_path="/opt/spark/bin/beeline",
+        jdbc_url="jdbc:hive2://localhost:10000/default"
+    )
+
+    sqls = [
+        "SELECT * FROM demo_table LIMIT 3",
+        "INSERT INTO demo_table VALUES (10, 'new', 888)",
+        "UPDATE demo_table SET name='changed' WHERE id=10",
+        "DELETE FROM demo_table WHERE id=10"
+    ]
+
+    for sql in sqls:
+        res = session.execute(sql, env="dev")
+        print(res)
+        print("-" * 80)
+
+    session.close()
+
+
+
+
+import subprocess
+import threading
+import queue
+import time
+import re
+
+class SparkBeelineSession:
+    def __init__(self, beeline_path: str, jdbc_url: str):
+        """
+        beeline_path: beeline 可执行路径
+        jdbc_url: JDBC 连接字符串
+        """
+        self.beeline_path = beeline_path
+        self.jdbc_url = jdbc_url
+        self.process = None
+        self.output_queue = queue.Queue()
+        self._start_beeline()
+
+    def _start_beeline(self):
+        """启动 Beeline 子进程，并设置 tsv2 输出格式"""
+        self.process = subprocess.Popen(
+            [self.beeline_path, "-u", self.jdbc_url],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        # 设置输出格式为 tsv2（Tab 分隔）
+        init_cmds = ["!set outputformat tsv2"]
+        for cmd in init_cmds:
+            self.process.stdin.write(cmd + "\n")
+        self.process.stdin.flush()
+
+        # 独立线程读取输出
+        def reader_thread():
+            for line in self.process.stdout:
+                self.output_queue.put(line)
+        threading.Thread(target=reader_thread, daemon=True).start()
+
+    def _read_output(self, end_marker="beeline>", timeout=10):
+        """读取 Beeline 输出直到提示符"""
+        lines = []
+        start_time = time.time()
+        while True:
+            try:
+                line = self.output_queue.get(timeout=0.1)
+                lines.append(line)
+                if end_marker in line:
+                    break
+            except queue.Empty:
+                if time.time() - start_time > timeout:
+                    break
+        return lines
+
+    def execute(self, sql: str, env: str):
+        """执行 SQL 并返回前端格式结果"""
+        # 向 Beeline 写入 SQL
+        self.process.stdin.write(sql + ";\n")
+        self.process.stdin.flush()
+
+        start = time.time()
+        raw_output = self._read_output()
+        elapsed = f"{(time.time() - start):.3f}s"
+
+        output_text = "".join(raw_output)
+        success = "Error" not in output_text and "Exception" not in output_text
+
+        # 解析表格数据
+        columns, rows = self._parse_table_data(output_text)
+
+        return {
+            "env": env,
+            "sql": sql,
+            "columns": columns,
+            "rows": rows,
+            "message": "SQL 执行成功" if success else "SQL 执行失败",
+            "success": success,
+            "time": elapsed
+        }
+
+def _parse_table_data(self, text: str):
+    """
+    解析 tsv2 输出，并过滤掉列名以 _hoodie_ 开头的字段
+    """
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    header_line = None
+    data_lines = []
+
+    for line in lines:
+        if '\t' in line:
+            if not header_line:
+                header_line = line
+            else:
+                data_lines.append(line)
+
+    if not header_line:
+        # 非查询语句
+        m = re.search(r"rows? affected", text, re.IGNORECASE)
+        msg = m.group(0) if m else "OK"
+        return [], [[msg]]
+
+    # 拆分列名
+    columns = [h.strip() for h in header_line.split('\t')]
+    # 找出有效列（不以 _hoodie_ 开头）
+    valid_idx = [i for i, col in enumerate(columns) if not col.startswith("_hoodie_")]
+    filtered_columns = [columns[i] for i in valid_idx]
+
+    # 过滤每一行的对应字段
+    rows = []
+    for row in data_lines:
+        row_items = [row.strip() for row in row.split('\t')]
+        filtered_row = [row_items[i] for i in valid_idx]
+        rows.append(filtered_row)
+
+    return filtered_columns, rows
+
+
+    def close(self):
+        """关闭 Beeline 进程"""
+        if self.process:
+            self.process.stdin.write("!quit\n")
+            self.process.stdin.flush()
+            self.process.terminate()
+            self.process.wait()
+
+
+# ---------------- 示例 ----------------
+if __name__ == "__main__":
+    session = SparkBeelineSession(
+        beeline_path="/opt/spark/bin/beeline",
+        jdbc_url="jdbc:hive2://localhost:10000/default"
+    )
+
+    sqls = [
+        "SELECT * FROM demo_table LIMIT 3",
+        "INSERT INTO demo_table VALUES (10, 'a|b', 888)",
+        "UPDATE demo_table SET name='changed' WHERE id=10",
+        "DELETE FROM demo_table WHERE id=10"
+    ]
+
+    for sql in sqls:
+        res = session.execute(sql, env="dev")
+        print(res)
+        print("-" * 80)
+
+    session.close()
+
+
+import subprocess
+import threading
+import queue
+import time
+import re
+
+class SparkBeelineSession:
+    def __init__(self, beeline_path: str, jdbc_url: str):
+        """
+        beeline_path: beeline 可执行路径
+        jdbc_url: JDBC 连接字符串
+        """
+        self.beeline_path = beeline_path
+        self.jdbc_url = jdbc_url
+        self.process = None
+        self.output_queue = queue.Queue()
+        self._start_beeline()
+
+    def _start_beeline(self):
+        """启动 Beeline 子进程，并设置 tsv2 输出格式"""
+        self.process = subprocess.Popen(
+            [self.beeline_path, "-u", self.jdbc_url],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        # 设置输出格式为 tsv2（Tab 分隔）
+        init_cmds = ["!set outputformat tsv2"]
+        for cmd in init_cmds:
+            self.process.stdin.write(cmd + "\n")
+        self.process.stdin.flush()
+
+        # 独立线程读取输出
+        def reader_thread():
+            for line in self.process.stdout:
+                self.output_queue.put(line)
+        threading.Thread(target=reader_thread, daemon=True).start()
+
+    def _read_output(self, end_marker="beeline>", timeout=10):
+        """读取 Beeline 输出直到提示符"""
+        lines = []
+        start_time = time.time()
+        while True:
+            try:
+                line = self.output_queue.get(timeout=0.1)
+                lines.append(line)
+                if end_marker in line:
+                    break
+            except queue.Empty:
+                if time.time() - start_time > timeout:
+                    break
+        return lines
+
+    def execute(self, sql: str, env: str):
+        """执行 SQL 并返回前端格式结果"""
+        # 向 Beeline 写入 SQL
+        self.process.stdin.write(sql + ";\n")
+        self.process.stdin.flush()
+
+        start = time.time()
+        raw_output = self._read_output()
+        elapsed = f"{(time.time() - start):.3f}s"
+
+        output_text = "".join(raw_output)
+        success = "Error" not in output_text and "Exception" not in output_text
+
+        # 解析表格数据
+        columns, rows = self._parse_table_data(output_text)
+
+        return {
+            "env": env,
+            "sql": sql,
+            "columns": columns,
+            "rows": rows,
+            "message": "SQL 执行成功" if success else "SQL 执行失败",
+            "success": success,
+            "time": elapsed
+        }
+
+    def _parse_table_data(self, text: str):
+        """
+        解析 tsv2 输出
+        """
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        header_line = None
+        data_lines = []
+
+        for line in lines:
+            if '\t' in line:
+                if not header_line:
+                    header_line = line
+                else:
+                    data_lines.append(line)
+
+        if not header_line:
+            # 非查询语句
+            m = re.search(r"rows? affected", text, re.IGNORECASE)
+            msg = m.group(0) if m else "OK"
+            return [], [[msg]]
+
+        columns = [h.strip() for h in header_line.split('\t')]
+        rows = [[c.strip() for c in row.split('\t')] for row in data_lines]
+        return columns, rows
+
+    def close(self):
+        """关闭 Beeline 进程"""
+        if self.process:
+            self.process.stdin.write("!quit\n")
+            self.process.stdin.flush()
+            self.process.terminate()
+            self.process.wait()
+
+
+# ---------------- 示例 ----------------
+if __name__ == "__main__":
+    session = SparkBeelineSession(
+        beeline_path="/opt/spark/bin/beeline",
+        jdbc_url="jdbc:hive2://localhost:10000/default"
+    )
+
+    sqls = [
+        "SELECT * FROM demo_table LIMIT 3",
+        "INSERT INTO demo_table VALUES (10, 'a|b', 888)",
+        "UPDATE demo_table SET name='changed' WHERE id=10",
+        "DELETE FROM demo_table WHERE id=10"
+    ]
+
+    for sql in sqls:
+        res = session.execute(sql, env="dev")
+        print(res)
+        print("-" * 80)
+
+    session.close()
