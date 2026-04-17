@@ -27,8 +27,30 @@
         @click="activeTab = tab.id"
         @contextmenu.prevent="openContextMenu($event, tab.id)"
       >
-        <span>{{ tab.title }}</span>
-        <span class="close-btn" @click.stop="emitClose(tab.id)">✕</span>
+        <!-- 编辑模式 -->
+        <template v-if="editingTabId === tab.id">
+          <input
+            type="text"
+            v-model="editingTitle"
+            @keyup.enter="saveRename(tab.id)"
+            @blur="saveRename(tab.id)"
+            @click.stop
+            class="rename-input"
+            ref="renameInput"
+          />
+        </template>
+        <!-- 正常模式 -->
+        <template v-else>
+          <span>{{ tab.title }}</span>
+        </template>
+        <!-- 关闭按钮（未锁定显示） -->
+        <span 
+          v-if="!lockedTabs.has(tab.id)" 
+          class="close-btn" 
+          @click.stop="emitClose(tab.id)"
+        >
+          ✕
+        </span>
       </div>
     </div>
 
@@ -133,7 +155,7 @@
 import successIcon from '../assets/icons/mdi--check-circle-outline.svg'
 import failIcon from '../assets/icons/mdi--close-circle-outline.svg'
 
-import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import axios from 'axios'
 import { Icon } from '@iconify/vue'
 
@@ -151,6 +173,13 @@ const showContextMenu = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
 const contextTabId = ref(null)
+
+// 编辑状态
+const editingTabId = ref(null)
+const editingTitle = ref('')
+
+// 锁定状态
+const lockedTabs = ref(new Set())
 
 // 自动激活最后一个结果，并为 FakerResult 初始化表单数据（安全判定）
 watch(
@@ -179,6 +208,17 @@ watch(
   },
   { deep: true, immediate: true }
 )
+
+// 当 results 变化时，清理不存在的标签页的锁定状态
+watch(() => props.results, (newResults) => {
+  const existingIds = new Set(newResults.map(tab => tab.id))
+  // 删除不存在的标签页的锁定状态
+  lockedTabs.value.forEach(tabId => {
+    if (!existingIds.has(tabId)) {
+      lockedTabs.value.delete(tabId)
+    }
+  })
+}, { deep: true })
 
 const activeResult = computed(() =>
   props.results.find(r => r.id === activeTab.value)
@@ -256,19 +296,38 @@ function openContextMenu(event, tabId) {
 
 function renameTab() {
   if (contextTabId.value !== null) {
-    const newTitle = prompt('请输入新标题:', props.results.find(tab => tab.id === contextTabId.value)?.title)
-    if (newTitle !== null && newTitle.trim() !== '') {
-      // 由于 results 是 prop，不能直接修改，需要 emit 事件让父组件处理
-      emit('rename-result', { id: contextTabId.value, title: newTitle.trim() })
+    const tab = props.results.find(tab => tab.id === contextTabId.value)
+    if (tab) {
+      editingTabId.value = contextTabId.value
+      editingTitle.value = tab.title
+      // 下一个tick聚焦输入框
+      nextTick(() => {
+        const input = document.querySelector('.rename-input')
+        if (input) input.focus()
+      })
     }
   }
   showContextMenu.value = false
 }
 
+function saveRename(tabId) {
+  if (editingTitle.value.trim() !== '') {
+    emit('rename-result', { id: tabId, title: editingTitle.value.trim() })
+  }
+  editingTabId.value = null
+  editingTitle.value = ''
+}
+
 function lockTab() {
   if (contextTabId.value !== null) {
-    // 切换锁定状态
-    emit('toggle-lock', contextTabId.value)
+    const tabId = contextTabId.value
+    if (lockedTabs.value.has(tabId)) {
+      lockedTabs.value.delete(tabId)
+    } else {
+      lockedTabs.value.add(tabId)
+    }
+    // 通知父组件（如果需要）
+    emit('toggle-lock', tabId)
   }
   showContextMenu.value = false
 }
@@ -466,6 +525,15 @@ async function submitFaker() {
 
 .close-btn:hover {
   color: #ff4d4f;
+}
+
+.rename-input {
+  border: 1px solid #409eff;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 14px;
+  outline: none;
+  width: 120px;
 }
 
 .output-content {
