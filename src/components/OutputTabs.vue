@@ -8,18 +8,9 @@
         :style="{ left: `${menuX}px`, top: `${menuY}px` }"
         @click.stop
       >
-        <div class="menu-item" @click="renameTab">
-          <img :src="renameIcon" alt="重命名" class="menu-icon" width="16" height="16" />
-          重命名
-        </div>
-        <div class="menu-item" @click="lockTab">
-          <img :src="lockIcon" alt="锁定" class="menu-icon" width="16" height="16" />
-          锁定
-        </div>
-        <div class="menu-item" @click="closeCurrentTab">
-          <img :src="closeIcon" alt="关闭" class="menu-icon" width="16" height="16" />
-          关闭
-        </div>
+        <div class="menu-item" @click="renameTab">重命名</div>
+        <div class="menu-item" @click="lockTab">锁定</div>
+        <div class="menu-item" @click="closeCurrentTab">关闭</div>
         <div class="menu-divider"></div>
         <div class="menu-item" @click="closeOtherTabs">关闭其他</div>
         <div class="menu-item" @click="closeAllTabs">关闭所有</div>
@@ -141,9 +132,6 @@
 
 import successIcon from '../assets/icons/mdi--check-circle-outline.svg'
 import failIcon from '../assets/icons/mdi--close-circle-outline.svg'
-import renameIcon from '../assets/icons/oui--export.svg'
-import lockIcon from '../assets/icons/mdi--check-circle-outline.svg'
-import closeIcon from '../assets/icons/mdi--close-circle-outline.svg'
 
 import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
@@ -412,27 +400,20 @@ async function submitFaker() {
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 9999;
-  min-width: 140px;
+  min-width: 120px;
   overflow: hidden;
 }
 
 .menu-item {
-  display: flex;
-  align-items: center;
   padding: 8px 12px;
   cursor: pointer;
   font-size: 14px;
   color: #333;
   transition: background-color 0.2s;
-  gap: 8px;
 }
 
 .menu-item:hover {
   background-color: #f0f0f0;
-}
-
-.menu-icon {
-  opacity: 0.8;
 }
 
 .menu-divider {
