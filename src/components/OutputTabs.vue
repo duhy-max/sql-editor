@@ -1,5 +1,16 @@
 <template>
   <div class="output-container">
+    <!-- 右键菜单 -->
+    <div
+      v-if="showContextMenu"
+      class="context-menu"
+      :style="{ left: `${menuX}px`, top: `${menuY}px` }"
+      @click.stop
+    >
+      <div class="menu-item" @click="closeOtherTabs">关闭其他</div>
+      <div class="menu-item" @click="closeAllTabs">关闭所有</div>
+    </div>
+
     <!-- 顶部标签 -->
     <div class="tabs">
       <div
@@ -8,6 +19,7 @@
         :class="['tab-button', { active: tab.id === activeTab }]"
         :data-status="tab.success"
         @click="activeTab = tab.id"
+        @contextmenu.prevent="openContextMenu($event, tab.id)"
       >
         <span>{{ tab.title }}</span>
         <span class="close-btn" @click.stop="emitClose(tab.id)">✕</span>
@@ -115,7 +127,7 @@
 import successIcon from '../assets/icons/mdi--check-circle-outline.svg'
 import failIcon from '../assets/icons/mdi--close-circle-outline.svg'
 
-import { ref, computed, watch, reactive } from 'vue'
+import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { Icon } from '@iconify/vue'
 
@@ -127,6 +139,12 @@ const emit = defineEmits(['close-result'])
 
 const activeTab = ref(null)
 const tableDataMap = reactive({}) // 保存每个 faker tab 的表单数据
+
+// 右键菜单相关状态
+const showContextMenu = ref(false)
+const menuX = ref(0)
+const menuY = ref(0)
+const contextTabId = ref(null)
 
 // 自动激活最后一个结果，并为 FakerResult 初始化表单数据（安全判定）
 watch(
@@ -177,6 +195,49 @@ const tableData = computed(() => {
 function emitClose(id) {
   emit('close-result', id)
 }
+
+// 右键菜单功能
+function openContextMenu(event, tabId) {
+  event.preventDefault()
+  contextTabId.value = tabId
+  menuX.value = event.clientX
+  menuY.value = event.clientY
+  showContextMenu.value = true
+}
+
+function closeOtherTabs() {
+  if (contextTabId.value !== null) {
+    // 保留当前右键的标签页，关闭其他所有标签页
+    const tabsToClose = props.results.filter(tab => tab.id !== contextTabId.value)
+    tabsToClose.forEach(tab => {
+      emit('close-result', tab.id)
+    })
+  }
+  showContextMenu.value = false
+}
+
+function closeAllTabs() {
+  // 关闭所有标签页
+  props.results.forEach(tab => {
+    emit('close-result', tab.id)
+  })
+  showContextMenu.value = false
+}
+
+// 点击页面其他地方关闭右键菜单
+function handleClickOutside() {
+  showContextMenu.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('contextmenu', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('contextmenu', handleClickOutside)
+})
 
 const fakeringData = ref(false)
 // 提交造数
@@ -249,6 +310,31 @@ async function submitFaker() {
   background: #f9f9f9;
   color: #333;
   font-family: "Segoe UI", Arial, sans-serif;
+  position: relative;
+}
+
+/* 右键菜单样式 */
+.context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  transition: background-color 0.2s;
+}
+
+.menu-item:hover {
+  background-color: #f0f0f0;
 }
 
 .tabs {
