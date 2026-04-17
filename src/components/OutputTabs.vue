@@ -52,12 +52,12 @@
       <!-- Faker 造数表单 -->
       <template v-else-if="activeResult.component === 'FakerResult'">
         <div class="editor-toolbar">
-           <button class="faker-btn" @click="submitFaker">
+           <button class="faker-btn" :disabled="fakeringData" @click="submitFaker">
            <img src="../assets/icons/covid--transmission-virus-human-transmit-2.svg" alt="DB" width="20" height="20" class="icon"/>
-						Faker Data
+						造数
 					  </button>
           <div class="table-info">
-            <span><img src="../assets/icons/carbon--cics-db2-connection.svg" alt="DB" width="20" height="20" class="icon"/> {{ env }}<img src="../assets/icons/devicon--azuresqldatabase.svg" alt="DB" width="20" height="20" class="icon"/>{{ db }} <img src="../assets/icons/carbon--data-table-reference.svg" alt="DB" width="20" height="20" class="icon"/> {{ table }}</span> 
+            <span><img src="../assets/icons/carbon--cics-db2-connection.svg" alt="DB" width="20" height="20" class="icon"/>{{ env }}<img src="../assets/icons/devicon--azuresqldatabase.svg" alt="DB" width="20" height="20" class="icon"/>{{ db }} <img src="../assets/icons/carbon--data-table-reference.svg" alt="DB" width="20" height="20" class="icon"/>{{ table }}</span> 
           </div>
         </div>
 
@@ -178,14 +178,17 @@ function emitClose(id) {
   emit('close-result', id)
 }
 
+const fakeringData = ref(false)
 // 提交造数
 async function submitFaker() {
+
   const tab = activeResult.value
   if (!tab || tab.component !== 'FakerResult') {
     alert('当前不是造数标签页')
     return
   }
 
+  fakeringData.value = true 
   const payload = {
     env: env.value,
     db: db.value,
@@ -200,6 +203,10 @@ async function submitFaker() {
   }
 
   try {
+
+  //const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+  //await sleep(5000) 
+
     const res = await axios.post('/api/run-faker', payload)
 
 		props.results.push({
@@ -226,7 +233,9 @@ async function submitFaker() {
     })
 
     activeTab.value = props.results[props.results.length - 1].id
-  }
+  }finally{
+   fakeringData.value = false 
+  } 
 
 }
 
@@ -464,7 +473,7 @@ async function submitFaker() {
 }
 
 .faker-btn {
-  background-color: #10b981; /* 绿色 */
+  background-color: #10b981;
   color: white;
   border: none;
   border-radius: 6px;
@@ -473,12 +482,48 @@ async function submitFaker() {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px; /* 图标和文字间距 */
+  gap: 6px;
   transition: background 0.2s;
+  position: relative;
 }
+
 .faker-btn:hover {
   background-color: #059669;
 }
+
+.faker-btn:disabled {
+  background-color: #6b7280;
+  cursor: not-allowed;
+}
+
+/* 图标旋转动画 */
+.faker-btn:disabled img {
+  animation: spin 1s linear infinite;
+}
+
+/* 悬浮提示 */
+.faker-btn:disabled:hover::after {
+  content: "正在生成模拟数据...";
+  position: absolute;
+  top: 100%; /* 改为在按钮下方 */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #1f2937;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  margin-top: 8px; /* 添加一点间距 */
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+ 
 
 .editor-toolbar {
   display: flex;
