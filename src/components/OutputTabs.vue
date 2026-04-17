@@ -227,8 +227,8 @@ function openContextMenu(event, tabId) {
   // 确保菜单位置在视口内
   const viewportWidth = window.innerWidth
   const viewportHeight = window.innerHeight
-  const menuWidth = 120 // 与CSS中的min-width一致
-  const menuHeight = 64 // 两个菜单项的高度
+  const menuWidth = 140 // 与CSS中的min-width一致
+  const menuHeight = 180 // 6个菜单项的高度（包括分隔线）
   
   // 调整位置，防止菜单超出视口
   let adjustedX = x
@@ -264,17 +264,6 @@ function openContextMenu(event, tabId) {
     document.addEventListener('click', closeMenuHandler)
     document.addEventListener('contextmenu', closeMenuHandler)
   }, 10)
-}
-
-function closeOtherTabs() {
-  if (contextTabId.value !== null) {
-    // 保留当前右键的标签页，关闭其他所有标签页
-    const tabsToClose = props.results.filter(tab => tab.id !== contextTabId.value)
-    tabsToClose.forEach(tab => {
-      emit('close-result', tab.id)
-    })
-  }
-  showContextMenu.value = false
 }
 
 function renameTab() {
