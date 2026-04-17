@@ -9,8 +9,10 @@
         @click.stop
       >
         <div class="menu-item" @click="renameTab">重命名</div>
-        <div class="menu-item" @click="lockTab">锁定</div>
-        <div class="menu-item" @click="closeCurrentTab">关闭</div>
+        <div class="menu-item" @click="lockTab">
+          {{ isCurrentTabLocked ? '取消锁定' : '锁定' }}
+        </div>
+        <div v-if="!isCurrentTabLocked" class="menu-item" @click="closeCurrentTab">关闭</div>
         <div class="menu-divider"></div>
         <div class="menu-item" @click="closeOtherTabs">关闭其他</div>
         <div class="menu-item" @click="closeAllTabs">关闭所有</div>
@@ -225,6 +227,11 @@ const activeResult = computed(() =>
   props.results.find(r => r.id === activeTab.value)
 )
 
+// 计算当前右键标签页是否已锁定
+const isCurrentTabLocked = computed(() => {
+  return contextTabId.value !== null && lockedTabs.value.has(contextTabId.value)
+})
+
 // 计算当前 faker 的 env/db/table（从 activeResult.data）
 const env = computed(() => activeResult.value?.data?.env || '')
 const db = computed(() => activeResult.value?.data?.db || '')
@@ -334,8 +341,10 @@ function lockTab() {
   if (contextTabId.value !== null) {
     const tabId = contextTabId.value
     if (lockedTabs.value.has(tabId)) {
+      // 取消锁定
       lockedTabs.value.delete(tabId)
     } else {
+      // 锁定
       lockedTabs.value.add(tabId)
     }
     // 通知父组件（如果需要）
@@ -353,8 +362,10 @@ function closeCurrentTab() {
 
 function closeOtherTabs() {
   if (contextTabId.value !== null) {
-    // 保留当前右键的标签页，关闭其他所有标签页
-    const tabsToClose = props.results.filter(tab => tab.id !== contextTabId.value)
+    // 保留当前右键的标签页，关闭其他所有标签页（但不关闭已锁定的标签页）
+    const tabsToClose = props.results.filter(tab => 
+      tab.id !== contextTabId.value && !lockedTabs.value.has(tab.id)
+    )
     tabsToClose.forEach(tab => {
       emit('close-result', tab.id)
     })
@@ -363,9 +374,11 @@ function closeOtherTabs() {
 }
 
 function closeAllTabs() {
-  // 关闭所有标签页
+  // 关闭所有未锁定的标签页
   props.results.forEach(tab => {
-    emit('close-result', tab.id)
+    if (!lockedTabs.value.has(tab.id)) {
+      emit('close-result', tab.id)
+    }
   })
   showContextMenu.value = false
 }
