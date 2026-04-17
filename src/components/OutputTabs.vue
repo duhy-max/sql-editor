@@ -1,15 +1,17 @@
 <template>
   <div class="output-container">
     <!-- 右键菜单 -->
-    <div
-      v-if="showContextMenu"
-      class="context-menu"
-      :style="{ left: `${menuX}px`, top: `${menuY}px` }"
-      @click.stop
-    >
-      <div class="menu-item" @click="closeOtherTabs">关闭其他</div>
-      <div class="menu-item" @click="closeAllTabs">关闭所有</div>
-    </div>
+    <teleport to="body">
+      <div
+        v-if="showContextMenu"
+        class="context-menu"
+        :style="{ left: `${menuX}px`, top: `${menuY}px` }"
+        @click.stop
+      >
+        <div class="menu-item" @click="closeOtherTabs">关闭其他</div>
+        <div class="menu-item" @click="closeAllTabs">关闭所有</div>
+      </div>
+    </teleport>
 
     <!-- 顶部标签 -->
     <div class="tabs">
@@ -199,10 +201,53 @@ function emitClose(id) {
 // 右键菜单功能
 function openContextMenu(event, tabId) {
   event.preventDefault()
+  event.stopPropagation()
   contextTabId.value = tabId
-  menuX.value = event.clientX
-  menuY.value = event.clientY
+  
+  // 获取鼠标位置
+  const x = event.clientX
+  const y = event.clientY
+  
+  // 确保菜单位置在视口内
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const menuWidth = 120 // 与CSS中的min-width一致
+  const menuHeight = 64 // 两个菜单项的高度
+  
+  // 调整位置，防止菜单超出视口
+  let adjustedX = x
+  let adjustedY = y
+  
+  if (x + menuWidth > viewportWidth) {
+    adjustedX = viewportWidth - menuWidth - 10
+  }
+  if (y + menuHeight > viewportHeight) {
+    adjustedY = viewportHeight - menuHeight - 10
+  }
+  
+  menuX.value = adjustedX
+  menuY.value = adjustedY
   showContextMenu.value = true
+  
+  // 添加一个一次性事件监听器来关闭菜单
+  const closeMenuHandler = (e) => {
+    // 如果点击的不是菜单本身
+    if (!e.target.closest('.context-menu')) {
+      showContextMenu.value = false
+      document.removeEventListener('click', closeMenuHandler)
+      document.removeEventListener('contextmenu', closeMenuHandler)
+    }
+  }
+  
+  // 移除之前可能存在的监听器
+  document.removeEventListener('click', closeMenuHandler)
+  document.removeEventListener('contextmenu', closeMenuHandler)
+  
+  // 添加新的监听器
+  setTimeout(() => {
+    document.addEventListener('click', closeMenuHandler)
+    document.addEventListener('contextmenu', closeMenuHandler)
+  }, 10)
 }
 
 function closeOtherTabs() {
@@ -225,11 +270,15 @@ function closeAllTabs() {
 }
 
 // 点击页面其他地方关闭右键菜单
-function handleClickOutside() {
-  showContextMenu.value = false
+function handleClickOutside(event) {
+  // 如果点击的不是菜单本身
+  if (!event.target.closest('.context-menu')) {
+    showContextMenu.value = false
+  }
 }
 
 onMounted(() => {
+  // 这些监听器仍然保留，但可能被openContextMenu中的监听器覆盖
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('contextmenu', handleClickOutside)
 })
@@ -320,7 +369,7 @@ async function submitFaker() {
   border: 1px solid #ddd;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
+  z-index: 9999;
   min-width: 120px;
   overflow: hidden;
 }
