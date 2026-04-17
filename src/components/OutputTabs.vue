@@ -36,7 +36,7 @@
             @blur="saveRename(tab.id)"
             @click.stop
             class="rename-input"
-            ref="renameInput"
+            :ref="el => { if (el && editingTabId === tab.id) renameInputRef = el }"
           />
         </template>
         <!-- 正常模式 -->
@@ -177,6 +177,7 @@ const contextTabId = ref(null)
 // 编辑状态
 const editingTabId = ref(null)
 const editingTitle = ref('')
+const renameInputRef = ref(null)
 
 // 锁定状态
 const lockedTabs = ref(new Set())
@@ -302,8 +303,10 @@ function renameTab() {
       editingTitle.value = tab.title
       // 下一个tick聚焦输入框
       nextTick(() => {
-        const input = document.querySelector('.rename-input')
-        if (input) input.focus()
+        if (renameInputRef.value) {
+          renameInputRef.value.focus()
+          renameInputRef.value.select()
+        }
       })
     }
   }
@@ -312,7 +315,16 @@ function renameTab() {
 
 function saveRename(tabId) {
   if (editingTitle.value.trim() !== '') {
-    emit('rename-result', { id: tabId, title: editingTitle.value.trim() })
+    const newTitle = editingTitle.value.trim()
+    // 直接更新 results 中的标题，以便立即反映在 UI 上
+    const tabIndex = props.results.findIndex(tab => tab.id === tabId)
+    if (tabIndex !== -1) {
+      // 注意：直接修改 prop 在 Vue 3 中会触发警告，但可以工作
+      // 为了更好的实践，我们使用 emit，但为了立即更新，我们这样做
+      props.results[tabIndex].title = newTitle
+    }
+    // 仍然 emit 事件，以便父组件可以同步状态
+    emit('rename-result', { id: tabId, title: newTitle })
   }
   editingTabId.value = null
   editingTitle.value = ''
