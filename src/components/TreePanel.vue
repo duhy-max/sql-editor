@@ -17,8 +17,9 @@
     <!-- 刷新按钮 -->
     <button 
       class="refresh-btn"
+      :class="{ 'cooldown': isWithinCooldown }"
       @click="manualRefresh"
-      :disabled="isRefreshing || isWithinCooldown"
+      :disabled="isRefreshing"
       :title="getRefreshButtonTitle"
     >
       <img 
@@ -899,6 +900,12 @@ async function mockApi(url) {
 .refresh-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 冷却时间内的样式 */
+.refresh-btn.cooldown {
+  opacity: 0.8;
+  cursor: default;
 }
 
 .refresh-icon {
