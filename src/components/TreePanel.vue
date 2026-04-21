@@ -250,8 +250,13 @@ const handleBlankRightClick = (event) => {
 }
 
 async function handleAction(action) {
-  if (!currentNode.value) return
+  console.debug('[TreePanel] handleAction 被调用:', { action, currentNode: currentNode.value })
+  if (!currentNode.value) {
+    console.warn('[TreePanel] currentNode 为空，无法执行操作')
+    return
+  }
   const { env, db, table } = currentNode.value
+  console.debug('[TreePanel] 操作目标:', { env, db, table })
 
   try {
     let payload = null
@@ -263,12 +268,16 @@ async function handleAction(action) {
         db,
         sql: `SELECT * FROM ${db}.${table};`
       }
+      console.debug('[TreePanel] 构造 payload:', payload)
     }
 
     // 🟩 导出数据
     if (action === 'export') {
+      console.debug('[TreePanel] 开始导出数据')
       emit('run-sql-result', { loading: true, env:env, db:db, sql: payload ? payload.sql : '' })
+      console.debug('[TreePanel] 发送加载提示')
       const res = await axios.post('/api/run-sql', payload)
+      console.debug('[TreePanel] 导出 API 响应:', res.data)
       const { rows, message, success, time } = res.data
       const SEP = '\x7F\x5E'
       const fileContent = rows.map(r => r.join(SEP)).join('\n') + '\n'
@@ -294,6 +303,7 @@ async function handleAction(action) {
         success,
         time
       })
+      console.debug('[TreePanel] 导出完成，发送结果事件')
       return
     }
 
@@ -384,6 +394,7 @@ async function handleAction(action) {
 
     // 取 table info 
 		if (action === 'faker') {
+      console.debug('[TreePanel] 开始获取表结构信息')
       // 发送加载提示
       emit('run-sql-result', { 
         loading: true, 
@@ -392,12 +403,17 @@ async function handleAction(action) {
         sql: '正在获取表结构信息...',
         message: '正在查询表结构，请稍候...'
       })
+      console.debug('[TreePanel] 发送加载提示事件')
       
       try {
+        console.debug('[TreePanel] 调用 /api/faker API')
         const res = await axios.get(`/api/faker?env=${env}&db=${db}&table=${table}`)
+        console.debug('[TreePanel] /api/faker 响应:', res.data)
         // 发送表结构信息，这会显示造数界面
         emit('table-info-result', res.data)
+        console.debug('[TreePanel] 发送 table-info-result 事件')
       } catch (error) {
+        console.error('[TreePanel] 获取表结构失败:', error)
         // 如果出错，发送错误信息
         emit('run-sql-result', {
           env,

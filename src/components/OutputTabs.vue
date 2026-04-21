@@ -223,9 +223,17 @@ watch(() => props.results, (newResults) => {
   })
 }, { deep: true })
 
-const activeResult = computed(() =>
-  props.results.find(r => r.id === activeTab.value)
-)
+const activeResult = computed(() => {
+  const result = props.results.find(r => r.id === activeTab.value)
+  console.debug('[OutputTabs] activeResult 计算:', { 
+    activeTab: activeTab.value, 
+    resultsCount: props.results.length,
+    found: !!result,
+    component: result?.component,
+    loading: result?.loading
+  })
+  return result
+})
 
 // 计算当前右键标签页是否已锁定
 const isCurrentTabLocked = computed(() => {
@@ -405,13 +413,15 @@ onUnmounted(() => {
 const fakeringData = ref(false)
 // 提交造数
 async function submitFaker() {
-
+  console.debug('[OutputTabs] submitFaker 被调用')
   const tab = activeResult.value
   if (!tab || tab.component !== 'FakerResult') {
+    console.warn('[OutputTabs] 当前不是造数标签页', { tab, component: tab?.component })
     alert('当前不是造数标签页')
     return
   }
 
+  console.debug('[OutputTabs] 开始造数提交，env/db/table:', env.value, db.value, table.value)
   fakeringData.value = true 
   const payload = {
     env: env.value,
@@ -425,13 +435,12 @@ async function submitFaker() {
       sample: c.sample
     }))
   }
+  console.debug('[OutputTabs] 造数提交 payload:', payload)
 
   try {
-
-  //const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-  //await sleep(5000) 
-
+    console.debug('[OutputTabs] 调用 /api/run-faker API')
     const res = await axios.post('/api/run-faker', payload)
+    console.debug('[OutputTabs] /api/run-faker 响应:', res.data)
 
 		props.results.push({
 			  id: Date.now(),
@@ -441,26 +450,29 @@ async function submitFaker() {
 			  time: res.data.time,
 			  message: res.data.message
 			})
+    console.debug('[OutputTabs] 添加结果标签页，当前 results 数量:', props.results.length)
 
 			// 自动切换到新标签
 		 activeTab.value = props.results[props.results.length - 1].id
+     console.debug('[OutputTabs] 切换到新标签:', activeTab.value)
 
   } catch (err) {
-    console.error('造数提交失败:', err)
+    console.error('[OutputTabs] 造数提交失败:', err)
     props.results.push({
       id: Date.now(),
 			title: `造数 ${props.results.length} 结果`,
 			data: [],           // 后端返回结果
 			success: false,
-			time: res.data.time,
-			message: res.data.message
+			time: err.response?.data?.time || '0.000s',
+			message: err.response?.data?.message || err.message
     })
+    console.debug('[OutputTabs] 添加错误结果标签页')
 
     activeTab.value = props.results[props.results.length - 1].id
   }finally{
    fakeringData.value = false 
+   console.debug('[OutputTabs] 造数提交完成，fakeringData 重置为 false')
   } 
-
 }
 
 </script>

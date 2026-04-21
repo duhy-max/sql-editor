@@ -36,11 +36,20 @@ const results = ref([])
 
 function handleAddResult(result) {
   const id = Date.now()
+  console.debug('[MainPage] handleAddResult 被调用:', { 
+    id, 
+    loading: result.loading, 
+    env: result.env, 
+    db: result.db,
+    message: result.message,
+    component: result.component 
+  })
 
   if (result.loading) {
-    console.log("result.loading ... ")
+    console.debug('[MainPage] 处理 loading 状态')
     // 检查是否是制造数据的加载提示
     if (result.message && result.message.includes('表结构')) {
+      console.debug('[MainPage] 检测到制造数据加载提示')
       // 这是制造数据的加载提示，我们添加一个特殊的加载页面
       results.value.push({
         id: id,
@@ -52,7 +61,9 @@ function handleAddResult(result) {
         loading: true,
         isFakerLoading: true // 标记这是制造数据的加载页面
       })
+      console.debug('[MainPage] 添加了制造数据加载页面，当前 results 数量:', results.value.length)
     } else {
+      console.debug('[MainPage] 普通查询加载提示')
       // 普通查询的加载提示
       results.value.push({
         id: id,
@@ -66,6 +77,7 @@ function handleAddResult(result) {
       })
     }
   } else {
+    console.debug('[MainPage] 处理完成状态，rows:', result.rows?.length, 'columns:', result.columns)
     // 转换 rows: [['a', 1], ['b', 2]] → [{col1: 'a', col2: 1}, ...]
     const tableData = Array.isArray(result.rows)
       ? result.rows.map((row) => {
@@ -79,6 +91,7 @@ function handleAddResult(result) {
 
     // 更新最后一个标签内容为真实结果
     const last = results.value[results.value.length - 1]
+    console.debug('[MainPage] 更新最后一个标签，之前标题:', last?.title)
     Object.assign(last, {
       id,
       title: `结果 ${results.value.length}`, // 使用当前数组长度作为序号
@@ -89,13 +102,18 @@ function handleAddResult(result) {
       loading: false,
       isFakerLoading: false
     })
+    console.debug('[MainPage] 更新后标题:', last.title)
   }
 }
 
 function handleFakerInfo(data) {
+  console.debug('[MainPage] handleFakerInfo 被调用，data:', data)
   // 查找是否有制造数据的加载页面
   const loadingIndex = results.value.findIndex(r => r.loading && r.isFakerLoading)
+  console.debug('[MainPage] 查找制造数据加载页面，index:', loadingIndex)
+  
   if (loadingIndex !== -1) {
+    console.debug('[MainPage] 找到制造数据加载页面，替换为造数界面')
     // 替换加载页面为造数界面
     results.value[loadingIndex] = {
       id: results.value[loadingIndex].id, // 保持相同的 ID
@@ -105,7 +123,9 @@ function handleFakerInfo(data) {
       loading: false,
       isFakerLoading: false
     }
+    console.debug('[MainPage] 替换完成，当前 results 数量:', results.value.length)
   } else {
+    console.debug('[MainPage] 未找到制造数据加载页面，添加新的造数标签页')
     // 如果没有找到加载页面，添加一个新的标签页
     results.value.push({
       id: Date.now(),
@@ -115,6 +135,7 @@ function handleFakerInfo(data) {
       loading: false,
       isFakerLoading: false
     })
+    console.debug('[MainPage] 添加完成，当前 results 数量:', results.value.length)
   }
 }
 
