@@ -102,7 +102,7 @@ const allTablesCache = ref([])
 const isRefreshing = ref(false)
 const expandedState = ref(new Set()) // 用于保存展开状态
 const lastRefreshTime = ref(0) // 上次刷新时间戳
-const MIN_REFRESH_INTERVAL = 30000 // 30秒的最小刷新间隔
+const MIN_REFRESH_INTERVAL = 90000 // 90秒的最小刷新间隔
 
 // ================= 缓存相关方法 =================
 // 保存树数据到 localStorage
