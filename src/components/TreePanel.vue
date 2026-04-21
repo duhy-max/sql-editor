@@ -17,9 +17,8 @@
     <!-- 刷新按钮 -->
     <button 
       class="refresh-btn"
-      :class="{ 'cooldown': isWithinCooldown }"
+      :class="{ 'cooldown': isWithinCooldown, 'refreshing': isRefreshing }"
       @click="manualRefresh"
-      :disabled="isRefreshing"
       :title="getRefreshButtonTitle"
     >
       <img 
@@ -281,11 +280,11 @@ async function manualRefresh() {
     return
   }
   
-  // 检查是否在30秒内刷新过
+  // 检查是否在90秒内刷新过
   const timeSinceLastRefresh = now - lastRefreshTime.value
   if (timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
     const remainingSeconds = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
-    console.debug(`[TreePanel] 距离上次刷新不足30秒，还需等待 ${remainingSeconds} 秒`)
+    console.debug(`[TreePanel] 距离上次刷新不足90秒，还需等待 ${remainingSeconds} 秒`)
     // 可以给用户一个提示，但这里我们先不实现UI提示
     return
   }
@@ -906,6 +905,12 @@ async function mockApi(url) {
 .refresh-btn.cooldown {
   opacity: 0.8;
   cursor: default;
+}
+
+/* 刷新中的样式 */
+.refresh-btn.refreshing {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 .refresh-icon {
