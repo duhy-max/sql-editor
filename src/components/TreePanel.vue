@@ -267,7 +267,7 @@ async function handleAction(action) {
 
     // 🟩 导出数据
     if (action === 'export') {
-      emit('run-sql-result', { loading: true, env:env, db:db, sql:sql })
+      emit('run-sql-result', { loading: true, env:env, db:db, sql: payload ? payload.sql : '' })
       const res = await axios.post('/api/run-sql', payload)
       const { rows, message, success, time } = res.data
       const SEP = '\x7F\x5E'
@@ -288,7 +288,7 @@ async function handleAction(action) {
       emit('run-sql-result', {
         env,
         db,
-        sql: payload.sql,
+        sql: payload ? payload.sql : '',
         columns: [],
         message: `已导出数据，共 ${rows.length} 行\n${message}`,
         success,
@@ -320,7 +320,7 @@ async function handleAction(action) {
         }
 
         const insertSql = `INSERT INTO ${db}.${table} VALUES ${valuesList.join(', ')}`
-				emit('run-sql-result', { loading: true, env, db, sql:insertSql })
+				emit('run-sql-result', { loading: true, env: env, db: db, sql: insertSql })
         const importPayload = { env, db, sql: insertSql }
 
         const importRes = await axios.post('/api/run-sql', importPayload)
@@ -372,7 +372,7 @@ async function handleAction(action) {
           })
           return
       }
-      emit('run-sql-result', { loading: true, env:env, db:db, sql:ddlSql })
+      emit('run-sql-result', { loading: true, env: env, db: db, sql: ddlSql })
       const res = await axios.post('/api/run-sql', {
         env,
         db,
@@ -384,13 +384,13 @@ async function handleAction(action) {
 
     // 取 table info 
 		if (action === 'faker') {
-      emit('run-sql-result', { loading: true, env:env, db:db, sql:'' })
+      emit('run-sql-result', { loading: true, env: env, db: db, sql: '' })
 		  const res = await axios.get(`/api/faker?env=${env}&db=${db}&table=${table}`)
-		  emit('table-info-result',res.data)
+		  emit('table-info-result', res.data)
 		  return
 		}
 
-    emit('run-sql-result', { loading: true, env:env, db:db, sql:payload.sql })
+    emit('run-sql-result', { loading: true, env: env, db: db, sql: payload ? payload.sql : '' })
     // const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
     // await sleep(5000) 
     
