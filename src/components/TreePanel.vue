@@ -102,6 +102,8 @@ const isRefreshing = ref(false)
 const expandedState = ref(new Set()) // 用于保存展开状态
 const lastRefreshTime = ref(0) // 上次刷新时间戳
 const MIN_REFRESH_INTERVAL = 90000 // 90秒的最小刷新间隔
+const remainingSeconds = ref(0) // 剩余秒数
+let countdownTimer = null // 倒计时定时器
 
 // ================= 缓存相关方法 =================
 // 保存树数据到 localStorage
@@ -185,10 +187,18 @@ const getRefreshButtonTitle = computed(() => {
   }
   
   if (isWithinCooldown.value) {
-    const now = Date.now()
-    const timeSinceLastRefresh = now - lastRefreshTime.value
-    const remainingSeconds = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
-    return `请等待 ${remainingSeconds} 秒后再刷新`
+    // 使用动态剩余秒数
+    if (remainingSeconds.value > 0) {
+      return `请等待 ${remainingSeconds.value} 秒后再刷新`
+    } else {
+      // 如果剩余秒数为0，但仍在冷却时间内，重新计算
+      const now = Date.now()
+      const timeSinceLastRefresh = now - lastRefreshTime.value
+      if (timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
+        const remainingSecs = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
+        return `请等待 ${remainingSecs} 秒后再刷新`
+      }
+    }
   }
   
   return '刷新树数据'
@@ -267,6 +277,36 @@ async function refreshInBackground() {
     console.error('[TreePanel] 后台刷新失败:', err)
   } finally {
     isRefreshing.value = false
+    // 刷新完成后启动倒计时
+    startCountdown()
+  }
+}
+
+// 启动倒计时
+function startCountdown() {
+  // 清除现有定时器
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+  
+  const now = Date.now()
+  const timeSinceLastRefresh = now - lastRefreshTime.value
+  if (timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
+    // 计算剩余秒数
+    remainingSeconds.value = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
+    
+    // 启动定时器，每秒更新
+    countdownTimer = setInterval(() => {
+      remainingSeconds.value -= 1
+      if (remainingSeconds.value <= 0) {
+        clearInterval(countdownTimer)
+        countdownTimer = null
+        remainingSeconds.value = 0
+      }
+    }, 1000)
+  } else {
+    remainingSeconds.value = 0
   }
 }
 
@@ -283,14 +323,16 @@ async function manualRefresh() {
   // 检查是否在90秒内刷新过
   const timeSinceLastRefresh = now - lastRefreshTime.value
   if (timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
-    const remainingSeconds = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
-    console.debug(`[TreePanel] 距离上次刷新不足90秒，还需等待 ${remainingSeconds} 秒`)
+    const remainingSecs = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
+    console.debug(`[TreePanel] 距离上次刷新不足90秒，还需等待 ${remainingSecs} 秒`)
     // 可以给用户一个提示，但这里我们先不实现UI提示
     return
   }
   
   console.debug('[TreePanel] 手动刷新')
   lastRefreshTime.value = now
+  // 启动倒计时
+  startCountdown()
   await refreshInBackground()
 }
 
@@ -299,7 +341,10 @@ onMounted(async () => {
   // 1. 先读取缓存，立即展示
   const hasCache = loadFromCache()
   
-  // 2. 后台静默获取最新数据
+  // 2. 启动倒计时
+  startCountdown()
+  
+  // 3. 后台静默获取最新数据
   refreshInBackground()
   
   // 如果没有缓存，显示空树
@@ -665,7 +710,14 @@ const handleGlobalClick = (e) => {
   if (!e.target.closest(".context-menu")) hideContextMenu()
 }
 onMounted(() => document.addEventListener("click", handleGlobalClick))
-onBeforeUnmount(() => document.removeEventListener("click", handleGlobalClick))
+onBeforeUnmount(() => {
+  document.removeEventListener("click", handleGlobalClick)
+  // 清除定时器
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+})
 
 // 选择表
 const selectTable = (env, db, table) => {
