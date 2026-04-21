@@ -39,50 +39,83 @@ function handleAddResult(result) {
 
   if (result.loading) {
     console.log("result.loading ... ")
-    // 创建一个“执行中”的占位页签
-    results.value.push({
-      id: id,
-      title: `执行中...`,
-      data: null,
-      success: null,
-      message: `${result.env}\n${result.sql}.`,
-      time: 0,
-      loading:result.loading,
-    })
+    // 检查是否是制造数据的加载提示
+    if (result.message && result.message.includes('表结构')) {
+      // 这是制造数据的加载提示，我们添加一个特殊的加载页面
+      results.value.push({
+        id: id,
+        title: `获取表结构...`,
+        data: null,
+        success: null,
+        message: result.message,
+        time: 0,
+        loading: true,
+        isFakerLoading: true // 标记这是制造数据的加载页面
+      })
+    } else {
+      // 普通查询的加载提示
+      results.value.push({
+        id: id,
+        title: `执行中...`,
+        data: null,
+        success: null,
+        message: `${result.env}\n${result.sql}.`,
+        time: 0,
+        loading: true,
+        isFakerLoading: false
+      })
+    }
   } else {
-
-		  // 转换 rows: [['a', 1], ['b', 2]] → [{col1: 'a', col2: 1}, ...]
-		  const tableData = Array.isArray(result.rows)
-			? result.rows.map((row) => {
-				const obj = {}
-				result.columns.forEach((col, i) => {
-				  obj[col] = row[i]
-				})
-				return obj
-			  })
-			: []
+    // 转换 rows: [['a', 1], ['b', 2]] → [{col1: 'a', col2: 1}, ...]
+    const tableData = Array.isArray(result.rows)
+      ? result.rows.map((row) => {
+          const obj = {}
+          result.columns.forEach((col, i) => {
+            obj[col] = row[i]
+          })
+          return obj
+        })
+      : []
 
     // 更新最后一个标签内容为真实结果
     const last = results.value[results.value.length - 1]
-		Object.assign(last, {
-		  id,
-		  title: `结果 ${results.value.length}`, // 使用当前数组长度作为序号
-		  data: tableData,
-		  message: result.message,
-		  success: result.success,
-		  time: result.time,
-      loading:false
-		})
+    Object.assign(last, {
+      id,
+      title: `结果 ${results.value.length}`, // 使用当前数组长度作为序号
+      data: tableData,
+      message: result.message,
+      success: result.success,
+      time: result.time,
+      loading: false,
+      isFakerLoading: false
+    })
   }
 }
 
 function handleFakerInfo(data) {
-  results.value.push({
-    id: Date.now(),
-    title: `造数 ${results.value.length + 1}`,
-    data, // 原始字段信息数组
-    component: 'FakerResult'
-  })
+  // 查找是否有制造数据的加载页面
+  const loadingIndex = results.value.findIndex(r => r.loading && r.isFakerLoading)
+  if (loadingIndex !== -1) {
+    // 替换加载页面为造数界面
+    results.value[loadingIndex] = {
+      id: results.value[loadingIndex].id, // 保持相同的 ID
+      title: `造数 ${loadingIndex + 1}`,
+      data,
+      component: 'FakerResult',
+      loading: false,
+      isFakerLoading: false
+    }
+  } else {
+    // 如果没有找到加载页面，添加一个新的标签页
+    results.value.push({
+      id: Date.now(),
+      title: `造数 ${results.value.length + 1}`,
+      data, // 原始字段信息数组
+      component: 'FakerResult',
+      loading: false,
+      isFakerLoading: false
+    })
+  }
 }
 
 function handleFakerResult(data) {

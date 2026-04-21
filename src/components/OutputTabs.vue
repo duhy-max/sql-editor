@@ -136,7 +136,7 @@
 				</div>
       </template>
 
-         <template v-else-if="activeResult.loading">
+         <template v-else-if="activeResult.loading && !activeResult.component">
 					  <div class="loading-state">
 						<img src="../assets/icons/eos-icons--bubble-loading.svg" class="spin" />
 						正在执行 SQL，请稍候...
