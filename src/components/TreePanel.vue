@@ -21,8 +21,12 @@
       :disabled="isRefreshing || isWithinCooldown"
       :title="getRefreshButtonTitle"
     >
-      <span v-if="isRefreshing" class="refresh-spin">⟳</span>
-      <span v-else>⟳</span>
+      <img 
+        :src="refreshIcon" 
+        alt="刷新" 
+        class="refresh-icon"
+        :class="{ 'refresh-spin': isRefreshing }"
+      />
     </button>
   </div>
 
@@ -86,6 +90,7 @@
 <script setup>
 import { ref, onMounted,watch, onBeforeUnmount, computed } from "vue"
 import axios from "axios"
+import refreshIcon from '../assets/icons/material-symbols-light--refresh-rounded.svg'
 
 const emit = defineEmits(['run-sql-result','select-table','table-info-result'])
 
@@ -882,6 +887,7 @@ async function mockApi(url) {
   align-items: center;
   justify-content: center;
   min-width: 32px;
+  min-height: 32px;
   transition: all 0.2s;
 }
 
@@ -895,8 +901,13 @@ async function mockApi(url) {
   cursor: not-allowed;
 }
 
+.refresh-icon {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s;
+}
+
 .refresh-spin {
-  display: inline-block;
   animation: spin 1s linear infinite;
 }
 
