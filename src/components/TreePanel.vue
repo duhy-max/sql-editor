@@ -384,9 +384,33 @@ async function handleAction(action) {
 
     // 取 table info 
 		if (action === 'faker') {
-		  const res = await axios.get(`/api/faker?env=${env}&db=${db}&table=${table}`)
-		  emit('table-info-result', res.data)
-		  return
+      // 发送加载提示
+      emit('run-sql-result', { 
+        loading: true, 
+        env: env, 
+        db: db, 
+        sql: '正在获取表结构信息...',
+        message: '正在查询表结构，请稍候...'
+      })
+      
+      try {
+        const res = await axios.get(`/api/faker?env=${env}&db=${db}&table=${table}`)
+        // 发送表结构信息，这会显示造数界面
+        emit('table-info-result', res.data)
+      } catch (error) {
+        // 如果出错，发送错误信息
+        emit('run-sql-result', {
+          env,
+          db,
+          sql: '',
+          columns: [],
+          rows: [],
+          message: `获取表结构失败: ${error.message}`,
+          success: false,
+          time: '0.000s'
+        })
+      }
+      return
 		}
 
     // 确保 payload 存在
