@@ -261,7 +261,7 @@ async function handleAction(action) {
       payload = {
         env,
         db,
-        sql: `SELECT * FROM ${db}.${table} `
+        sql: `SELECT * FROM ${db}.${table};`
       }
     }
 
@@ -390,6 +390,22 @@ async function handleAction(action) {
 		  return
 		}
 
+    // 确保 payload 存在
+    if (!payload) {
+      console.error('payload 未定义')
+      emit('run-sql-result', {
+        env,
+        db,
+        sql: '',
+        columns: [],
+        rows: [],
+        message: '操作未实现或 payload 未定义',
+        success: false,
+        time: '0.000s'
+      })
+      return
+    }
+    
     emit('run-sql-result', { loading: true, env: env, db: db, sql: payload ? payload.sql : '' })
     // const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
     // await sleep(5000) 
