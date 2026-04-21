@@ -384,7 +384,6 @@ async function handleAction(action) {
 
     // 取 table info 
 		if (action === 'faker') {
-      emit('run-sql-result', { loading: true, env: env, db: db, sql: '' })
 		  const res = await axios.get(`/api/faker?env=${env}&db=${db}&table=${table}`)
 		  emit('table-info-result', res.data)
 		  return
