@@ -277,7 +277,8 @@ async function refreshInBackground() {
     console.error('[TreePanel] 后台刷新失败:', err)
   } finally {
     isRefreshing.value = false
-    // 刷新完成后启动倒计时
+    // 更新最后刷新时间，并启动倒计时
+    lastRefreshTime.value = Date.now()
     startCountdown()
   }
 }
@@ -500,6 +501,7 @@ async function handleAction(action) {
       }
       console.debug('[TreePanel] 构造 payload:', payload)
     }
+    // 注意：action === 'export' 会提前返回，所以只有 action === 'query' 会继续执行
 
     // 🟩 导出数据
     if (action === 'export') {
