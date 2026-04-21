@@ -18,8 +18,8 @@
     <button 
       class="refresh-btn"
       @click="manualRefresh"
-      :disabled="isRefreshing"
-      :title="isRefreshing ? '正在刷新...' : '刷新树数据'"
+      :disabled="isRefreshing || isWithinCooldown"
+      :title="getRefreshButtonTitle"
     >
       <span v-if="isRefreshing" class="refresh-spin">⟳</span>
       <span v-else>⟳</span>
@@ -95,6 +95,8 @@ const filteredTree = ref([])
 const allTablesCache = ref([])
 const isRefreshing = ref(false)
 const expandedState = ref(new Set()) // 用于保存展开状态
+const lastRefreshTime = ref(0) // 上次刷新时间戳
+const MIN_REFRESH_INTERVAL = 30000 // 30秒的最小刷新间隔
 
 // ================= 缓存相关方法 =================
 // 保存树数据到 localStorage
@@ -240,10 +242,50 @@ async function refreshInBackground() {
   }
 }
 
+// 计算是否在冷却时间内
+const isWithinCooldown = computed(() => {
+  const now = Date.now()
+  const timeSinceLastRefresh = now - lastRefreshTime.value
+  return timeSinceLastRefresh < MIN_REFRESH_INTERVAL && !isRefreshing.value
+})
+
+// 计算刷新按钮的标题
+const getRefreshButtonTitle = computed(() => {
+  if (isRefreshing.value) {
+    return '正在刷新...'
+  }
+  
+  if (isWithinCooldown.value) {
+    const now = Date.now()
+    const timeSinceLastRefresh = now - lastRefreshTime.value
+    const remainingSeconds = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
+    return `请等待 ${remainingSeconds} 秒后再刷新`
+  }
+  
+  return '刷新树数据'
+})
+
 // ================= 手动刷新方法 =================
 async function manualRefresh() {
-  if (isRefreshing.value) return
+  const now = Date.now()
+  
+  // 检查是否正在刷新
+  if (isRefreshing.value) {
+    console.debug('[TreePanel] 刷新正在进行中，忽略点击')
+    return
+  }
+  
+  // 检查是否在30秒内刷新过
+  const timeSinceLastRefresh = now - lastRefreshTime.value
+  if (timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
+    const remainingSeconds = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
+    console.debug(`[TreePanel] 距离上次刷新不足30秒，还需等待 ${remainingSeconds} 秒`)
+    // 可以给用户一个提示，但这里我们先不实现UI提示
+    return
+  }
+  
   console.debug('[TreePanel] 手动刷新')
+  lastRefreshTime.value = now
   await refreshInBackground()
 }
 
