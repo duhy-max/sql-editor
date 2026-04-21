@@ -84,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted,watch, onBeforeUnmount } from "vue"
+import { ref, onMounted,watch, onBeforeUnmount, computed } from "vue"
 import axios from "axios"
 
 const emit = defineEmits(['run-sql-result','select-table','table-info-result'])
@@ -166,6 +166,29 @@ function restoreExpandedState() {
   traverse(treeData.value)
 }
 
+// 计算是否在冷却时间内
+const isWithinCooldown = computed(() => {
+  const now = Date.now()
+  const timeSinceLastRefresh = now - lastRefreshTime.value
+  return timeSinceLastRefresh < MIN_REFRESH_INTERVAL && !isRefreshing.value
+})
+
+// 计算刷新按钮的标题
+const getRefreshButtonTitle = computed(() => {
+  if (isRefreshing.value) {
+    return '正在刷新...'
+  }
+  
+  if (isWithinCooldown.value) {
+    const now = Date.now()
+    const timeSinceLastRefresh = now - lastRefreshTime.value
+    const remainingSeconds = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
+    return `请等待 ${remainingSeconds} 秒后再刷新`
+  }
+  
+  return '刷新树数据'
+})
+
 // ================= 后台刷新方法 =================
 async function refreshInBackground() {
   if (isRefreshing.value) return
@@ -241,29 +264,6 @@ async function refreshInBackground() {
     isRefreshing.value = false
   }
 }
-
-// 计算是否在冷却时间内
-const isWithinCooldown = computed(() => {
-  const now = Date.now()
-  const timeSinceLastRefresh = now - lastRefreshTime.value
-  return timeSinceLastRefresh < MIN_REFRESH_INTERVAL && !isRefreshing.value
-})
-
-// 计算刷新按钮的标题
-const getRefreshButtonTitle = computed(() => {
-  if (isRefreshing.value) {
-    return '正在刷新...'
-  }
-  
-  if (isWithinCooldown.value) {
-    const now = Date.now()
-    const timeSinceLastRefresh = now - lastRefreshTime.value
-    const remainingSeconds = Math.ceil((MIN_REFRESH_INTERVAL - timeSinceLastRefresh) / 1000)
-    return `请等待 ${remainingSeconds} 秒后再刷新`
-  }
-  
-  return '刷新树数据'
-})
 
 // ================= 手动刷新方法 =================
 async function manualRefresh() {
