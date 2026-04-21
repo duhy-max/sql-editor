@@ -14,6 +14,16 @@
       @click="searchText = ''"
       title="清除输入"
     >×</span>
+    <!-- 刷新按钮 -->
+    <button 
+      class="refresh-btn"
+      @click="manualRefresh"
+      :disabled="isRefreshing"
+      :title="isRefreshing ? '正在刷新...' : '刷新树数据'"
+    >
+      <span v-if="isRefreshing" class="refresh-spin">⟳</span>
+      <span v-else>⟳</span>
+    </button>
   </div>
 
  
@@ -83,25 +93,172 @@ const treeData = ref([])
 const searchText = ref('')
 const filteredTree = ref([])
 const allTablesCache = ref([])
+const isRefreshing = ref(false)
+const expandedState = ref(new Set()) // 用于保存展开状态
 
-// ✅ 初始化加载环境列表（懒加载入口）
+// ================= 缓存相关方法 =================
+// 保存树数据到 localStorage
+function saveToCache() {
+  try {
+    localStorage.setItem('nav_tree_cache', JSON.stringify(treeData.value))
+    localStorage.setItem('all_tables_cache', JSON.stringify(allTablesCache.value))
+    console.debug('[TreePanel] 缓存已保存')
+  } catch (err) {
+    console.warn('[TreePanel] 保存缓存失败:', err)
+  }
+}
+
+// 从 localStorage 加载缓存
+function loadFromCache() {
+  try {
+    const cached = localStorage.getItem('nav_tree_cache')
+    if (cached) {
+      const parsed = JSON.parse(cached)
+      treeData.value = parsed
+      filteredTree.value = parsed
+      console.debug('[TreePanel] 从缓存加载树数据')
+    }
+    
+    const cachedTables = localStorage.getItem('all_tables_cache')
+    if (cachedTables) {
+      allTablesCache.value = JSON.parse(cachedTables)
+      console.debug('[TreePanel] 从缓存加载表数据，数量:', allTablesCache.value.length)
+    }
+    return true
+  } catch (err) {
+    console.warn('[TreePanel] 加载缓存失败:', err)
+    return false
+  }
+}
+
+// 保存当前展开状态
+function saveExpandedState() {
+  expandedState.value.clear()
+  function traverse(nodes, path = '') {
+    for (const node of nodes) {
+      const currentPath = path ? `${path}|${node.name}` : node.name
+      if (node.expanded) {
+        expandedState.value.add(currentPath)
+      }
+      if (node.children && node.children.length > 0) {
+        traverse(node.children, currentPath)
+      }
+    }
+  }
+  traverse(treeData.value)
+}
+
+// 恢复展开状态
+function restoreExpandedState() {
+  function traverse(nodes, path = '') {
+    for (const node of nodes) {
+      const currentPath = path ? `${path}|${node.name}` : node.name
+      if (expandedState.value.has(currentPath)) {
+        node.expanded = true
+      }
+      if (node.children && node.children.length > 0) {
+        traverse(node.children, currentPath)
+      }
+    }
+  }
+  traverse(treeData.value)
+}
+
+// ================= 后台刷新方法 =================
+async function refreshInBackground() {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+  
+  try {
+    console.debug('[TreePanel] 开始后台刷新')
+    // 保存当前展开状态
+    saveExpandedState()
+    
+    // 获取最新环境列表
+    const envsRes = await axios.get('/api/envs')
+    const newTreeData = []
+    const newAllTablesCache = []
+    
+    for (const env of envsRes.data) {
+      const envNode = {
+        name: env,
+        expanded: false,
+        loaded: false,
+        children: []
+      }
+      newTreeData.push(envNode)
+      
+      try {
+        // 获取数据库列表
+        const dbsRes = await axios.get(`/api/dbs?env=${env}`)
+        for (const db of dbsRes.data) {
+          const dbNode = {
+            name: db,
+            expanded: false,
+            loaded: false,
+            children: []
+          }
+          envNode.children.push(dbNode)
+          
+          try {
+            // 获取表列表
+            const tablesRes = await axios.get(`/api/tables?env=${env}&db=${db}`)
+            const tables = tablesRes.data
+            for (const table of tables) {
+              dbNode.children.push({ name: table })
+              // 添加到缓存
+              if (!newAllTablesCache.some(item => item.env === env && item.db === db && item.table === table)) {
+                newAllTablesCache.push({ env, db, table })
+              }
+            }
+            dbNode.loaded = true
+          } catch (tableErr) {
+            console.warn(`[TreePanel] 加载表失败 ${env}.${db}:`, tableErr)
+          }
+        }
+        envNode.loaded = true
+      } catch (dbErr) {
+        console.warn(`[TreePanel] 加载数据库失败 ${env}:`, dbErr)
+      }
+    }
+    
+    // 更新数据
+    treeData.value = newTreeData
+    allTablesCache.value = newAllTablesCache
+    
+    // 恢复展开状态
+    restoreExpandedState()
+    
+    // 保存到缓存
+    saveToCache()
+    
+    console.debug('[TreePanel] 后台刷新完成，表数量:', allTablesCache.value.length)
+  } catch (err) {
+    console.error('[TreePanel] 后台刷新失败:', err)
+  } finally {
+    isRefreshing.value = false
+  }
+}
+
+// ================= 手动刷新方法 =================
+async function manualRefresh() {
+  if (isRefreshing.value) return
+  console.debug('[TreePanel] 手动刷新')
+  await refreshInBackground()
+}
+
 // ================= 初始化树 =================
 onMounted(async () => {
-  try {
-    const res = await axios.get('/api/envs')
-    treeData.value = res.data.map((env) => ({
-      name: env,
-      expanded: false,
-      loaded: false,
-      children: []
-    }))
-    filteredTree.value = treeData.value
-
-    // ✅ 启动预加载
-    preloadAllTables()
-
-  } catch (err) {
-    console.error("加载环境失败:", err)
+  // 1. 先读取缓存，立即展示
+  const hasCache = loadFromCache()
+  
+  // 2. 后台静默获取最新数据
+  refreshInBackground()
+  
+  // 如果没有缓存，显示空树
+  if (!hasCache) {
+    treeData.value = []
+    filteredTree.value = []
   }
 })
 
@@ -109,10 +266,11 @@ onMounted(async () => {
 const toggle = async (node, parent = null) => {
   node.expanded = !node.expanded
 
+  // 如果节点已加载，直接使用缓存数据
   if (node.expanded && !node.loaded) {
     try {
       if (!parent) {
-        // 加载数据库列表
+        // 环境节点：加载数据库列表
         const res = await axios.get(`/api/dbs?env=${node.name}`)
         node.children = res.data.map((db) => ({
           name: db,
@@ -121,20 +279,30 @@ const toggle = async (node, parent = null) => {
           children: []
         }))
       } else {
-        // 加载表列表
+        // 数据库节点：加载表列表
         const res = await axios.get(`/api/tables?env=${parent.name}&db=${node.name}`)
         node.children = res.data.map(t => ({ name: t }))
-			  // ✅ 缓存这些表
-				const newTables = res.data.map(t => ({
-				  env: parent.name,
-				  db: node.name,
-				  table: t
-				}))
-				allTablesCache.value.push(...newTables)
-
-         console.log(`已缓存 ${parent.name}.${node.name} 下的 ${res.data.length} 张表`)
+        // 添加到缓存
+        const newTables = res.data.map(t => ({
+          env: parent.name,
+          db: node.name,
+          table: t
+        }))
+        // 避免重复添加
+        for (const newTable of newTables) {
+          if (!allTablesCache.value.some(item => 
+            item.env === newTable.env && 
+            item.db === newTable.db && 
+            item.table === newTable.table
+          )) {
+            allTablesCache.value.push(newTable)
+          }
+        }
+        console.debug(`已加载 ${parent.name}.${node.name} 下的 ${res.data.length} 张表`)
       }
       node.loaded = true
+      // 保存到缓存
+      saveToCache()
     } catch (err) {
       console.error("加载节点失败:", err)
     }
@@ -142,36 +310,6 @@ const toggle = async (node, parent = null) => {
 }
 
 
-// ================= 预加载所有表 =================
-async function preloadAllTables() {
-  try {
-    const envsRes = await axios.get('/api/envs')
-    const envs = envsRes.data
-
-    for (const env of envs) {
-      console.log(env)
-      const dbRes = await axios.get(`/api/dbs?env=${env}`)
-      const dbs = dbRes.data
-
-      for (const db of dbs) {
-       
-        const tableRes = await axios.get(`/api/tables?env=${env}&db=${db}`)
-        const tables = tableRes.data
-       // console.log(tables)
-				for (const t of tables) {
-				  if (!allTablesCache.value.some(item => item.env === env && item.db === db && item.table === t)) {
-					allTablesCache.value.push({ env, db, table: t })
-				  }
-				}
-
-      }
-    }
-
-    console.log('✅ 预缓存完毕:', allTablesCache.value.length, '张表')
-  } catch (err) {
-    console.error('缓存表失败:', err)
-  }
-}
 
 
 function filterTables(keyword) {
@@ -659,6 +797,7 @@ async function mockApi(url) {
   align-items: center;
   border-bottom: 1px solid #ddd;
   z-index: 10; /* 确保浮在树上方 */
+  gap: 8px;
 }
 
 .tree-search-container input {
@@ -678,7 +817,7 @@ async function mockApi(url) {
 
 .clear-btn {
   position: absolute;
-  right: 18px;
+  right: 50px;
   cursor: pointer;
   font-size: 16px;
   color: #999;
@@ -688,6 +827,40 @@ async function mockApi(url) {
 
 .clear-btn:hover {
   color: #333;
+}
+
+.refresh-btn {
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: #e0e0e0;
+  border-color: #999;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 </style>
